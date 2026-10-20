@@ -41,6 +41,22 @@ build.bat                  :: dist\Mandalina.exe (tek dosya) üretir
 
 Kayıtlar: `%LOCALAPPDATA%\Mandalina\olaylar.log` ve `hata.log`.
 
+### Yeni sürüm yayınlama
+
+Exe'yi bilgisayarda derlemek gerekmez; GitHub Actions Windows'ta derler
+([`.github/workflows/mandalina.yml`](../.github/workflows/mandalina.yml)).
+
+1. Değişiklikleri `main`'e gönder. Yukarıdaki "İndir" bağlantısındaki sürüm etiketini de yenisiyle değiştir.
+2. Yeni bir etiket gönder (bir öncekinden büyük olsun):
+   ```bash
+   git tag mandalina-v1.1
+   git push origin mandalina-v1.1
+   ```
+3. Actions exe'yi derler ve `mandalina-v1.1` release'ine `Mandalina.exe` olarak yükler (release yoksa oluşturur).
+
+Sadece denemek için: GitHub'da Actions → Mandalina → "Run workflow". Exe, çalışmanın sayfasında
+"Mandalina" artifact'ı olarak indirilebilir; release'e dokunulmaz.
+
 ## Tasarım notları (değiştirmeden önce oku)
 
 - **Shift algılama:** `App._poll` her 15 ms'de `GetAsyncKeyState` ile sol tuş + Shift'e bakar.

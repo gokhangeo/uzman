@@ -1,0 +1,44 @@
+# Mandalina.exe'yi Windows'ta derler.
+# - mandalina-v* etiketi gönderilince: exe'yi o etiketin GitHub Release'ine yükler (release yoksa oluşturur).
+# - Elle çalıştırınca (workflow_dispatch): exe sadece "artifact" olarak indirilebilir, release'e dokunulmaz.
+name: Mandalina
+
+on:
+  push:
+    tags: ['mandalina-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Derle
+        shell: cmd
+        run: mandalina\build.bat
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mandalina
+          path: mandalina/dist/Mandalina.exe
+
+      - name: Release'e yükle
+        if: startsWith(github.ref, 'refs/tags/mandalina-v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Mandalina ${TAG#mandalina-v}" \
+              --notes "Ayrıntılar: [mandalina/README.md](https://github.com/${{ github.repository }}/tree/$TAG/mandalina)"
+          fi
+          gh release upload "$TAG" mandalina/dist/Mandalina.exe --clobber
