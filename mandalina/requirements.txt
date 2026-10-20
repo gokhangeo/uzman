@@ -1,0 +1,7 @@
+pillow==13.0.0
+pillow_heif==1.8.1
+pymupdf==1.28.2
+pdf2docx==0.5.13
+pystray==0.19.5
+pywin32==312
+pyinstaller==6.19.0
