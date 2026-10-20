@@ -77,6 +77,9 @@ Sadece denemek için: GitHub'da Actions → Mandalina → "Run workflow". Exe, �
 - Office dönüşümleri COM ile (`DispatchEx`); PowerPoint, kullanıcının açık sunumu varsa kapatılmaz.
 - **BİRLEŞTİR sırası:** Dosyalar geldiği sırayla birleştirilir (sıralama yapılmaz). Explorer sürüklemede
   tutulan dosyayı listenin başına koyar, böylece tutulan PDF ilk sayfalar olur.
+- **Tek tek birleştirme:** BİRLEŞTİR'e tek dosya gelirse `merge_queue` onu
+  `%LOCALAPPDATA%\Mandalina\birlestir-bekleyen.json`'da 10 dk bekletir; sonraki BİRLEŞTİR'de bekleyen başa
+  konup birleştirilir. Sürükleme ve sağ tık aynı dosyayı kullanır.
 - **Otomatik güncelleme:** Sürüm, derlemede `version.txt` olarak exe'ye gömülür (`MANDALINA_VERSION`,
   Actions'ta etiketten gelir; yoksa `dev`). Açılıştan 5 sn sonra GitHub Releases'te daha büyük
   `mandalina-vX.Y` + `Mandalina.exe` aranır, exe'nin yanına indirilir, çalışan exe `Mandalina.eski.exe`

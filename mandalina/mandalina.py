@@ -755,6 +755,45 @@ def copy_paths(files):
         win32clipboard.CloseClipboard()
 
 
+# BİRLEŞTİR'e tek dosya gelirse bekletilir; sonraki BİRLEŞTİR'de birlikte birlestirilir
+# (ilk birakilan basta). Dosyada tutulur ki surukleme ve sag tik birlikte kullanilabilsin.
+MERGE_WAIT_SECONDS = 600
+
+
+def _merge_wait_path():
+    folder = os.path.join(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()), "Mandalina")
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, "birlestir-bekleyen.json")
+
+
+def merge_queue(files):
+    """Birlestirilecek tam listeyi dondurur; tek dosya beklemeye alindiysa None."""
+    path = _merge_wait_path()
+    pending = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if time.time() - data.get("time", 0) < MERGE_WAIT_SECONDS:
+            pending = [p for p in data.get("files", []) if os.path.exists(p)]
+    except (OSError, ValueError):
+        pass
+    combined = pending + [f for f in files if f not in pending]
+    if len(combined) < 2:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"time": time.time(), "files": combined}, f)
+        return None
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    return combined
+
+
+def merge_waiting_message(files):
+    return (f"1. dosya alındı: {os.path.basename(files[0])}\n"
+            "Şimdi 2. dosyayı da BİRLEŞTİR'e bırak (10 dakika içinde).")
+
+
 def wheel_for(paths):
     kind = kind_of_all(paths)
     title = os.path.basename(paths[0].rstrip("\\/")) if len(paths) == 1 else f"{len(paths)} dosya"
@@ -843,6 +882,13 @@ class App:
             copy_paths(files)
             toast(self.root, f"✓ {len(files)} dosya yolu panoya kopyalandı")
             return
+        if fmt == "BİRLEŞTİR":
+            combined = merge_queue(files)
+            log_event(f"birlestir kuyrugu: {[os.path.basename(f) for f in (combined or files)]}")
+            if combined is None:
+                toast(self.root, merge_waiting_message(files))
+                return
+            files = combined
         toast(self.root, f"{fmt} işleniyor...", busy=True)
         self.jobs += 1
         threading.Thread(target=lambda: self.events.put(("done", run_conversion(files, fmt))),
@@ -987,9 +1033,16 @@ def menu_mode(first):
             toast(root, f"✓ {len(paths)} dosya yolu panoya kopyalandı")
             finish(2500)
             return
+        files = paths
+        if fmt == "BİRLEŞTİR":
+            files = merge_queue(paths)
+            if files is None:
+                toast(root, merge_waiting_message(paths))
+                finish(5000)
+                return
         state["done"] = True
         toast(root, f"{fmt} işleniyor...", busy=True)
-        threading.Thread(target=lambda: events.put(run_conversion(paths, fmt)), daemon=True).start()
+        threading.Thread(target=lambda: events.put(run_conversion(files, fmt)), daemon=True).start()
 
     wheel = Wheel(root)
     wheel.enable_click(click)
