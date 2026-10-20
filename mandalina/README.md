@@ -3,6 +3,9 @@
 Windows için "sürükle + Shift" dosya dönüştürücü ([Tangerine for Mac](https://tangerineformac.com)'ten esinlenildi).
 Her şey bilgisayarda yerel olarak çalışır, hiçbir dosya internete yüklenmez.
 
+**İndir:** [Mandalina.exe](https://github.com/gokhangeo/uzman/releases/download/mandalina-v1.0/Mandalina.exe)
+(tek dosya, kurulum yok; [tüm sürümler](https://github.com/gokhangeo/uzman/releases))
+
 ## Kullanım
 
 - **Sürükle + Shift:** Explorer'da bir dosyayı sürüklemeye başla, Shift'e bas. İmlecin etrafında bir çark açılır;
