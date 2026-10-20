@@ -242,14 +242,16 @@ def convert_pdf(src, fmt):
 
 
 def merge_pdfs(paths):
-    """PDF, Word ve gorselleri secim sirasiyla tek PDF'te birlestirir."""
+    """PDF, Word ve gorselleri verilen sirayla tek PDF'te birlestirir.
+    Siralama degistirilmez: Explorer suruklemede tutulan dosyayi listenin basina koyar,
+    boylece tutulan PDF birlesik dosyanin ilk sayfalari olur."""
     import pymupdf
     import tempfile
     out = unique_path(os.path.join(os.path.dirname(paths[0]), "Birlesik"), "pdf")
     tmp = tempfile.mkdtemp(prefix="mandalina")
     try:
         with pymupdf.open() as merged:
-            for p in sorted(paths, key=lambda s: os.path.basename(s).lower()):
+            for p in paths:
                 k = kind_of(p)
                 if k == "pdf":
                     with pymupdf.open(p) as d:
@@ -687,8 +689,8 @@ class Wheel:
     def on_drop(self, files):
         x, y = cursor_pos()
         s = self.slice_at(x, y)
-        log_event(f"birakildi: {len(files)} dosya, dilim={self.labels[s] if s is not None else '-'}, "
-                  f"cark_acik={self.visible}")
+        log_event(f"birakildi: {[os.path.basename(f) for f in files][:5]}, "
+                  f"dilim={self.labels[s] if s is not None else '-'}, cark_acik={self.visible}")
         self.hide()
         if s is not None and self.on_pick:
             self.on_pick(files, self.labels[s])
@@ -799,10 +801,42 @@ class App:
                 register_context_menu()
             except OSError:
                 log_error()
-        toast(self.root, "Mandalina çalışıyor. Dosya sürükle + Shift'e bas\nya da dosyaya sağ tıkla.\n"
-                         "Kapatmak için saat yanındaki turuncu simgeye sağ tıkla.")
+        self.jobs = 0  # suren donusum sayisi (guncelleme bunlarin bitmesini bekler)
+        if updated_from:
+            toast(self.root, f"Mandalina {APP_VERSION} sürümüne güncellendi.")
+        else:
+            toast(self.root, "Mandalina çalışıyor. Dosya sürükle + Shift'e bas\nya da dosyaya sağ tıkla.\n"
+                             "Kapatmak için saat yanındaki turuncu simgeye sağ tıkla.")
         self.tray = start_tray(lambda: self.events.put(("quit", None)))
         self.root.after(15, self.poll)
+        if can_self_update():
+            threading.Thread(target=self.update_worker, daemon=True).start()
+
+    def update_worker(self):
+        time.sleep(5)  # acilisi yavaslatma
+        try:
+            found = find_update(APP_VERSION)
+            if not found:
+                return
+            tag, url, size = found
+            log_event(f"guncelleme bulundu: {tag}")
+            self.events.put(("toast", f"Yeni sürüm bulundu ({tag.removeprefix(TAG_PREFIX)}), indiriliyor..."))
+            new_exe = download_update(url, size)
+            self.events.put(("update", (tag, new_exe)))
+        except Exception:
+            log_error()
+
+    def install_update(self, tag, new_exe):
+        if self.jobs > 0 or self.wheel.visible:  # once suren isler bitsin
+            self.root.after(2000, lambda: self.install_update(tag, new_exe))
+            return
+        try:
+            apply_update(new_exe, tag)
+        except Exception:
+            log_error()
+            toast(self.root, "Güncelleme kurulamadı; mevcut sürümle devam ediliyor.")
+            return
+        self.quit()
 
     def pick(self, files, fmt):
         if fmt == "YOLU KOPYALA":
@@ -810,7 +844,8 @@ class App:
             toast(self.root, f"✓ {len(files)} dosya yolu panoya kopyalandı")
             return
         toast(self.root, f"{fmt} işleniyor...", busy=True)
-        threading.Thread(target=lambda: self.events.put(("toast", run_conversion(files, fmt))),
+        self.jobs += 1
+        threading.Thread(target=lambda: self.events.put(("done", run_conversion(files, fmt))),
                          daemon=True).start()
 
     def quit(self):
@@ -826,6 +861,11 @@ class App:
                 if kind == "quit":
                     self.quit()
                     return
+                if kind == "update":
+                    self.install_update(*data)
+                    continue
+                if kind == "done":
+                    self.jobs -= 1
                 toast(self.root, data)
             while self.wheel.ole_events:
                 kind, files = self.wheel.ole_events.pop(0)
@@ -1030,6 +1070,130 @@ def toggle_context_menu():
         unregister_context_menu()
 
 
+# --------------------------------------------------------------------------
+# Otomatik guncelleme: acilista GitHub Releases'te daha yeni "mandalina-vX.Y"
+# surumu ve Mandalina.exe varligi arar; indirir, calisan exe'yi yeniden adlandirir
+# (Windows calisan exe'nin adini degistirmeye izin verir), yenisini yerine koyar
+# ve yeniden baslatir. "dev" derlemeler ve .py olarak calistirma guncellenmez.
+# --------------------------------------------------------------------------
+TAG_PREFIX = "mandalina-v"
+UPDATE_API = os.environ.get("MANDALINA_UPDATE_URL",
+                            "https://api.github.com/repos/gokhangeo/uzman/releases?per_page=50")
+
+
+def read_app_version():
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with open(os.path.join(base, "version.txt"), encoding="utf-8") as f:
+            return f.read().strip() or "dev"
+    except OSError:
+        return "dev"
+
+
+APP_VERSION = read_app_version()
+updated_from = None  # --updated ile baslatildiysa eski exe'nin yolu
+
+
+def version_tuple(text):
+    try:
+        return tuple(int(x) for x in text.strip().split("."))
+    except ValueError:
+        return None
+
+
+def can_self_update():
+    return getattr(sys, "frozen", False) and version_tuple(APP_VERSION) is not None
+
+
+def find_update(current):
+    """(etiket, indirme_adresi, boyut) ya da None."""
+    import urllib.request
+    req = urllib.request.Request(UPDATE_API, headers={"Accept": "application/vnd.github+json",
+                                                     "User-Agent": "Mandalina"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        releases = json.load(r)
+    cur = version_tuple(current)
+    skipped = setting("SkipTag")
+    best = None
+    for rel in releases:
+        tag = rel.get("tag_name", "")
+        if rel.get("draft") or rel.get("prerelease") or not tag.startswith(TAG_PREFIX) or tag == skipped:
+            continue
+        v = version_tuple(tag[len(TAG_PREFIX):])
+        asset = next((a for a in rel.get("assets", []) if a.get("name") == "Mandalina.exe"), None)
+        if v and asset and v > cur and (best is None or v > best[0]):
+            best = (v, tag, asset["browser_download_url"], asset["size"])
+    return best[1:] if best else None
+
+
+def download_update(url, size):
+    import urllib.request
+    dest = os.path.join(os.path.dirname(sys.executable), "Mandalina.guncelleme.exe")
+    part = dest + ".part"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mandalina"})
+    with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
+        shutil.copyfileobj(r, f, 1024 * 1024)
+    if os.path.getsize(part) != size:
+        os.remove(part)
+        raise RuntimeError("indirilen dosyanın boyutu yanlış")
+    os.replace(part, dest)
+    return dest
+
+
+def apply_update(new_exe, tag):
+    exe = sys.executable
+    old = os.path.splitext(exe)[0] + ".eski.exe"
+    if os.path.exists(old):
+        os.remove(old)
+    os.replace(exe, old)  # calisan exe yeniden adlandirilabilir
+    try:
+        os.replace(new_exe, exe)
+    except OSError:
+        os.replace(old, exe)
+        raise
+    # Yeni surum ayni etikete ragmen hala eski surumu bildirirse sonsuz donguye girme
+    set_setting("SkipTag", tag)
+    log_event(f"guncelleme kuruldu: {tag}")
+    # PYINSTALLER_RESET_ENVIRONMENT: yeni exe, kapanmakta olan eski surumun gecici
+    # klasorunu devralmasin, kendi dosyalarini acsin.
+    subprocess.Popen([exe, "--updated", old], close_fds=True,
+                     env=dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1"),
+                     creationflags=0x00000008 | 0x00000200)  # DETACHED_PROCESS | NEW_PROCESS_GROUP
+
+
+def finish_update(old_exe):
+    """Yeni surum ilk acilis: eski surum kapanana kadar bekle, eski exe'yi sil."""
+    for _ in range(100):
+        if single_instance():
+            break
+        time.sleep(0.2)
+    else:
+        return False
+    for _ in range(50):
+        try:
+            if os.path.exists(old_exe):
+                os.remove(old_exe)
+            break
+        except OSError:
+            time.sleep(0.2)
+    return True
+
+
+def setting(name):
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, SETTINGS_KEY) as k:
+            return winreg.QueryValueEx(k, name)[0]
+    except OSError:
+        return None
+
+
+def set_setting(name, value):
+    import winreg
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, SETTINGS_KEY) as k:
+        winreg.SetValueEx(k, name, 0, winreg.REG_SZ, value)
+
+
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
@@ -1076,7 +1240,7 @@ def start_tray(on_quit):
     except ImportError:
         return None
     menu = pystray.Menu(
-        pystray.MenuItem("Mandalina — sürükle + Shift", None, enabled=False),
+        pystray.MenuItem(f"Mandalina {APP_VERSION} — sürükle + Shift", None, enabled=False),
         pystray.MenuItem("Sağ tık menüsünde göster", lambda i, it: toggle_context_menu(),
                          checked=lambda it: context_menu_wanted()),
         pystray.MenuItem("Windows ile başlat", lambda i, it: toggle_autostart(),
@@ -1109,6 +1273,10 @@ if __name__ == "__main__":
         except Exception:
             log_error()
         sys.exit(0)
-    if not single_instance():
+    if args[:1] == ["--updated"] and len(args) >= 2:
+        updated_from = args[1]
+        if not finish_update(args[1]):
+            sys.exit(0)
+    elif not single_instance():
         sys.exit(0)
     App().run()

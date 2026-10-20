@@ -28,6 +28,8 @@ jobs:
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
+          # Etiketten surum (mandalina-v1.1 -> 1.1) exe'ye yazilir; uygulama acilista bununla guncelleme arar.
+          MANDALINA_VERSION: ${{ startsWith(github.ref, 'refs/tags/mandalina-v') && github.ref_name || 'dev' }}
         run: mandalina\build.bat
 
       - uses: actions/upload-artifact@v4
