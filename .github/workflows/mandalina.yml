@@ -23,6 +23,11 @@ jobs:
 
       - name: Derle
         shell: cmd
+        # build.bat ara dosyaları %TEMP%'e yazar. Depo D:'de, varsayılan TEMP C:'de olunca PyInstaller
+        # "path is on mount 'D:', start on mount 'C:'" hatası veriyor; TEMP'i aynı sürücüdeki kısa klasöre al.
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: mandalina\build.bat
 
       - uses: actions/upload-artifact@v4
