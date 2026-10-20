@@ -75,3 +75,12 @@ Sadece denemek için: GitHub'da Actions → Mandalina → "Run workflow". Exe, �
   için ayrı `--menu` işlemi başlatır; ilk işlem (mutex ile seçilen lider) diğerlerinin yollarını
   `%TEMP%\mandalina-menu.txt` üzerinden kısa süre toplar ve tek çark açar.
 - Office dönüşümleri COM ile (`DispatchEx`); PowerPoint, kullanıcının açık sunumu varsa kapatılmaz.
+- **BİRLEŞTİR sırası:** Dosyalar geldiği sırayla birleştirilir (sıralama yapılmaz). Explorer sürüklemede
+  tutulan dosyayı listenin başına koyar, böylece tutulan PDF ilk sayfalar olur.
+- **Otomatik güncelleme:** Sürüm, derlemede `version.txt` olarak exe'ye gömülür (`MANDALINA_VERSION`,
+  Actions'ta etiketten gelir; yoksa `dev`). Açılıştan 5 sn sonra GitHub Releases'te daha büyük
+  `mandalina-vX.Y` + `Mandalina.exe` aranır, exe'nin yanına indirilir, çalışan exe `Mandalina.eski.exe`
+  olarak yeniden adlandırılıp yenisi yerine konur ve `--updated` ile yeniden başlatılır
+  (`PYINSTALLER_RESET_ENVIRONMENT=1` şart). Süren dönüştürme varsa bitmesi beklenir. `dev` derlemeler ve
+  `.py` olarak çalıştırma güncellenmez. Test için `MANDALINA_UPDATE_URL` ile sahte bir release listesi verilebilir.
+  **Etiketteki sürüm ile exe'nin sürümü aynı olmalı**; olmazsa `SkipTag` ayarı sonsuz döngüyü engeller.
